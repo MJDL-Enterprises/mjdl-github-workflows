@@ -1,0 +1,61 @@
+name: pre-commit-lint (reusable)
+
+# First reusable workflow published to mjdl-github-workflows, per
+# planning/2026-09-10-gh-repo/SPRINT-PLAN.md §3. Extracted from the
+# byte-for-byte-identical ci.yml jobs in mjdl-brain and simplirec-platform
+# (both authored under WO-350 Phase 1 Wave-1 as ruleset-required-check stubs).
+#
+# Runs pre-commit hooks on files CHANGED in the calling PR (not --all-files,
+# which surfaces pre-existing violations in unrelated files). No secrets
+# required; no secrets: inherit needed for this workflow.
+#
+# Consumers: `uses: MJDL-Enterprises/mjdl-github-workflows/.github/workflows/pre-commit-lint.yml@main`
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version for pre-commit"
+        required: false
+        type: string
+        default: "3.11"
+
+jobs:
+  ci:
+    name: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+
+      - name: Run pre-commit on changed files
+        run: |
+          if [ ! -f .pre-commit-config.yaml ]; then
+            echo "No .pre-commit-config.yaml: skipping pre-commit run."
+            exit 0
+          fi
+          BASE=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          echo "Base: $BASE"
+          echo "HEAD: $(git rev-parse HEAD)"
+          FILES=$(git diff --name-only --diff-filter=ACMR "$BASE" HEAD | tr '\n' ' ')
+          if [ -z "$FILES" ]; then
+            echo "No changed files in this PR."
+            exit 0
+          fi
+          echo "Changed files: $FILES"
+          pre-commit run --files $FILES --show-diff-on-failure
